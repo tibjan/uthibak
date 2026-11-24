@@ -1,0 +1,62 @@
+<!DOCTYPE html><html lang="hu"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Úthiba">
+<link rel="manifest" href="manifest.webmanifest"><title>Úthiba rögzítő</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f1f3f5;--bd:#cfd4da;--ac:#1d4ed8}
+@media (prefers-color-scheme:dark){:root{--bg:#15171a;--fg:#eee;--mut:#9aa0a6;--card:#23262b;--bd:#3a3f46;--ac:#4f7df0}}
+*{box-sizing:border-box}body{margin:0;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));background:var(--bg);color:var(--fg);font:17px system-ui,sans-serif;max-width:520px;margin:auto}
+h1{font-size:20px;margin:4px 0 10px}label{display:block;font-size:13px;color:var(--mut);margin-top:10px}
+input,button{font:inherit;width:100%;padding:12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--fg)}
+button{background:var(--ac);color:#fff;border:0;font-weight:700;margin-top:12px}button.s{background:var(--card);color:var(--fg);border:1px solid var(--bd);font-weight:500}
+.g{display:flex;gap:8px}.g>*{flex:1}#loc{font-size:14px;margin-top:6px;color:var(--mut)}
+#vol{font-size:15px;margin-top:6px;color:var(--mut)}ul{padding-left:18px;font-size:14px;color:var(--mut)}
+</style></head><body>
+<h1>🕳️ Úthiba rögzítő</h1>
+<div class="g"><div><label>Dátum</label><input type="date" id="d"></div><div><label>Utca</label><input id="u" list="us" autocomplete="off"></div></div>
+<datalist id="us"></datalist>
+<div id="loc">Helyzet: nincs</div><button class="s" id="gps" style="margin-top:6px">📍 Helyzet frissítése</button>
+<div class="g"><div><label>Hossz (cm)</label><input type="number" inputmode="decimal" id="h"></div><div><label>Szélesség (cm)</label><input type="number" inputmode="decimal" id="w"></div><div><label>Mélység (cm)</label><input type="number" inputmode="decimal" id="m" value="4"></div></div>
+<div id="vol"></div>
+<label>Megjegyzés</label><input id="c">
+<button id="add">Mentés</button>
+<h1 style="margin-top:22px">Rögzítve: <span id="n">0</span> db, <span id="t">0</span> m³</h1>
+<ul id="last"></ul>
+<button class="s" id="exp">⬇ CSV küldése / mentése</button>
+<button class="s" id="undo">Utolsó törlése</button>
+<button class="s" id="clr">Elküldött adatok törlése</button>
+<p id="msg" style="font-size:14px;color:var(--mut)"></p>
+<script>
+const $=i=>document.getElementById(i),K='uthibak_log';
+let rows=[];try{rows=JSON.parse(localStorage.getItem(K)||'[]')}catch(e){}
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(rows))}catch(e){$('msg').textContent='Nem sikerült menteni!'}};
+const today=()=>new Date().toLocaleDateString('sv-SE');
+const vol=r=>r.h*r.w*r.d/1e6,f4=x=>x.toFixed(4).replace('.',',');
+let pos=null;$('d').value=today();
+function gps(){$('loc').textContent='Helymeghatározás…';
+ if(!navigator.geolocation){$('loc').textContent='Nincs GPS-támogatás';return}
+ navigator.geolocation.getCurrentPosition(p=>{pos=[p.coords.latitude,p.coords.longitude];$('loc').textContent='Helyzet: '+pos[0].toFixed(6)+', '+pos[1].toFixed(6)+' (±'+Math.round(p.coords.accuracy)+' m)'},
+ e=>{pos=null;$('loc').textContent='Helyzet nem elérhető: '+e.message},{enableHighAccuracy:true,timeout:20000,maximumAge:0})}
+function show(){$('n').textContent=rows.length;$('t').textContent=rows.reduce((s,r)=>s+vol(r),0).toFixed(3).replace('.',',');
+ $('last').innerHTML=rows.slice(-5).reverse().map(r=>`<li>${r.date} ${r.street||'-'} ${r.h}×${r.w}×${r.d} cm</li>`).join('');
+ $('us').innerHTML=[...new Set(rows.map(r=>r.street).filter(Boolean))].map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('');}
+function pv(){const v=(+$('h').value)*(+$('w').value)*(+$('m').value)/1e6;$('vol').textContent=v?'Térfogat: '+f4(v)+' m³':''}
+['h','w','m'].forEach(i=>$(i).oninput=pv);
+$('gps').onclick=gps;
+$('add').onclick=()=>{const h=+$('h').value,w=+$('w').value,d=+$('m').value;
+ if(!pos){$('msg').textContent='Nincs helyzet – koppints a Helyzet frissítése gombra.';return}
+ if(!h||!w||!d){$('msg').textContent='Add meg a méreteket.';return}
+ rows.push({date:$('d').value||today(),lat:pos[0],lng:pos[1],street:$('u').value.trim(),h,w,d,note:$('c').value});save();
+ ['h','w','c'].forEach(i=>$(i).value='');pv();show();$('msg').textContent='Mentve ✔';gps();};
+$('undo').onclick=()=>{if(rows.length&&confirm('Törlöd az utolsó rögzítést?')){rows.pop();save();show()}};
+$('clr').onclick=()=>{if(confirm('Már elküldted a CSV-t? Törlöd az összes rögzítést a telefonról?')){rows=[];save();show()}};
+$('exp').onclick=async()=>{if(!rows.length){$('msg').textContent='Nincs mit exportálni.';return}
+ const q=x=>'"'+String(x).replace(/"/g,'""')+'"';let cum=0;
+ const L=['srsz,datum,gprs,utca,hossz,szél,mély,megjegyzés,térfogat m3,kumulált térfogat'];
+ rows.forEach((r,i)=>{const v=vol(r);cum+=v;L.push([i+1,r.date.slice(2).replace(/-/g,'.'),q(r.lat.toFixed(6)+', '+r.lng.toFixed(6)),q(r.street||''),r.h,r.w,r.d,q(r.note||''),q(f4(v)),q(f4(cum))].join(','))});
+ const name='uthibak_'+today().replace(/-/g,'')+'.csv',blob=new Blob(['\ufeff'+L.join('\r\n')],{type:'text/csv'});
+ try{const f=new File([blob],name,{type:'text/csv'});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e.name==='AbortError')return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
+show();gps();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
